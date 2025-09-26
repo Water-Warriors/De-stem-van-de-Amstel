@@ -2,117 +2,171 @@
 
 {% block title %}PFAmsterdam - Map{% endblock %}
 
+{% block head %}
+{{ super() }}
+<style>
+    /* CSS for the map legend */
+    .info.legend {
+        padding: 6px 8px; font: 14px/16px Arial, Helvetica, sans-serif;
+        background: white; background: rgba(255,255,255,0.8);
+        box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px;
+    }
+    .legend i {
+        width: 18px; height: 18px; float: left;
+        margin-right: 8px; opacity: 0.9;
+    }
+</style>
+{% endblock %}
+
+
 {% block scripts %}
 <script src="{{ url_for('static', filename='map/leaflet.js') }}"></script>
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
 
 <script>
-// --- START: MODIFIED CODE ---
-
-// 1. Define the geographical bounds for the Amsterdam region
-const amsterdamBounds = L.latLngBounds(
-    [52.28, 4.70], // South-West corner
-    [52.45, 5.05]  // North-East corner
-);
-
-// 2. Initialize the map with options to lock it to the bounds
+// --- Map Initialization ---
+const amsterdamBounds = L.latLngBounds([52.28, 4.70], [52.45, 5.05]);
 const map = L.map('map', {
-    center: [52.370216, 4.895168],
-    zoom: 12, // Adjusted zoom to better fit the initial view
-    maxBounds: amsterdamBounds,
-    maxBoundsViscosity: 1.0, // Makes the boundary solid
-    minZoom: 11 // Prevents zooming out too far
+    center: [52.370216, 4.895168], zoom: 12,
+    maxBounds: amsterdamBounds, maxBoundsViscosity: 1.0, minZoom: 11
 });
-
-// --- END: MODIFIED CODE ---
-
-
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Marker cluster group
-const markers = L.markerClusterGroup();
-
-// Load CSV/XLSX automatically
+// --- Data Loading ---
 const dataFile = "{{ url_for('static', filename='data/data.csv') }}";
-
-if (dataFile.endsWith('.csv')) {
-    fetch(dataFile)
-        .then(res => res.text())
-        .then(text => plotGroupedData(Papa.parse(text, { header: true }).data));
-} else if (dataFile.endsWith('.xlsx')) {
-    fetch(dataFile)
-        .then(res => res.arrayBuffer())
-        .then(buf => {
-            const wb = XLSX.read(buf, { type: "array" });
-            const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            plotGroupedData(jsonData);
-        });
-}
-
-// Parse PFAS JSON and format nicely
-function formatPFAS(pfas_values) {
-    if (!pfas_values) return "";
-    let str = "";
-    try {
-        const arr = JSON.parse(pfas_values);
-        arr.forEach(p => {
-            const val = p.value !== null ? p.value : `<${p.less_than || "100"}`;
-            str += `${p.substance} (${p.isomer}): ${val} ${p.unit}<br>`;
-        });
-    } catch (e) {
-        str = pfas_values;
-    }
-    return str;
-}
-
-// Group markers by lat/lon
-function plotGroupedData(data) {
-    const grouped = {};
-
-    data.forEach(row => {
-        const lat = parseFloat(row.lat);
-        const lon = parseFloat(row.lon);
-        if (isNaN(lat) || isNaN(lon)) return;
-
-        const key = `${lat},${lon}`;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(row);
+fetch(dataFile)
+    .then(res => res.text())
+    .then(text => {
+        const parsedData = Papa.parse(text, { header: true, skipEmptyLines: true }).data;
+        plotAllPoints(parsedData);
     });
 
-    Object.keys(grouped).forEach(key => {
-        const rows = grouped[key];
-        const lat = parseFloat(rows[0].lat);
-        const lon = parseFloat(rows[0].lon);
+/**
+ * Main function to plot every single data point on the map.
+ * @param {Array} data The parsed CSV data
+ */
+function plotAllPoints(data) {
 
-        let popupContent = "";
-        rows.forEach(r => {
-            popupContent += `
-                <b>${r.name || ""}</b> (${r.category || ""})<br>
-                City: ${r.city || ""}, Country: ${r.country || ""}<br>
-                Type: ${r.type || ""}, Sector: ${r.sector || ""}<br>
-                Source type: ${r.source_type || ""}, Data method: ${r.data_collection_method || ""}<br>
-                Source: <a href="${r.source_url || "#"}" target="_blank">${r.source_text || ""}</a><br>
-                Dataset: ${r.dataset_name || ""} (ID: ${r.dataset_id || ""})<br>
-                Matrix: ${r.matrix || ""}, Year: ${r.year || ""}<br>
-                PFAS Values:<br>${formatPFAS(r.pfas_values)}
-                Sum: ${r.pfas_sum || 0} ${r.unit || ""}<hr>
-            `;
-        });
+    // --- **STEP 1: Find min and max, ignoring zero for log scale** ---
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+    const allPoints = data.map(row => {
+        const point = {
+            lat: parseFloat(row.lat),
+            lon: parseFloat(row.lon),
+            value: parseFloat(row.value),
+            originalRow: row
+        };
+        // For log scale, we only consider values greater than 0
+        if (!isNaN(point.value) && point.value > 0) {
+            if (point.value < minValue) minValue = point.value;
+            if (point.value > maxValue) maxValue = point.value;
+        }
+        return point;
+    }).filter(p => !isNaN(p.lat) && !isNaN(p.lon) && !isNaN(p.value));
 
-        const marker = L.marker([lat, lon]).bindPopup(popupContent);
+    // --- **STEP 2: Create a LOGARITHMIC color function** ---
+    // Handle potential errors if all values are 0 or the same
+    const logMin = minValue > 0 ? Math.log(minValue) : 0;
+    const logMax = maxValue > 0 ? Math.log(maxValue) : 1;
+
+    function getDynamicColor(value) {
+        if (value <= 0) return 'hsl(120, 100%, 50%)'; // Green for 0 or less
+        if (value >= maxValue) return 'hsl(0, 100%, 50%)'; // Red for max
+        
+        const logVal = Math.log(value);
+        // Normalize the log value from 0 to 1
+        const normalized = (logVal - logMin) / (logMax - logMin);
+        
+        const hue = (1 - normalized) * 120; // 0 is red, 120 is green
+        return `hsl(${hue}, 100%, 50%)`;
+    }
+    
+    // Radius can remain linear or use a gentle log scale
+    function getRadius(value) {
+        return value > 0 ? Math.log(value + 1) * 2 + 5 : 5;
+    }
+
+    // --- **STEP 3: Configure Marker Cluster Group** ---
+    const markers = L.markerClusterGroup({
+        maxClusterRadius: 100,
+        disableClusteringAtZoom: 17,
+        iconCreateFunction: function(cluster) {
+            const childMarkers = cluster.getAllChildMarkers();
+            let totalPfas = 0;
+            childMarkers.forEach(marker => {
+                if (marker.options.pfasValue) {
+                    totalPfas += marker.options.pfasValue;
+                }
+            });
+            const avgPfas = totalPfas / childMarkers.length;
+
+            const clusterColor = getDynamicColor(avgPfas);
+            const displaySum = totalPfas > 1000 ? (totalPfas / 1000).toFixed(1) + 'k' : Math.round(totalPfas);
+
+            return new L.DivIcon({
+                html: `<div style="background-color: ${clusterColor};"><span>${displaySum}</span></div>`,
+                className: 'marker-cluster',
+                iconSize: new L.Point(40, 40)
+            });
+        }
+    });
+
+    // --- **STEP 4: Plot all the points using the new color function** ---
+    allPoints.forEach(point => {
+        const markerOptions = {
+            radius: getRadius(point.value),
+            fillColor: getDynamicColor(point.value),
+            color: "#000",
+            weight: 0.5,
+            opacity: 1,
+            fillOpacity: 0.8,
+            pfasValue: point.value
+        };
+        
+        const popupContent = `
+            <div style="font-size: 1.1em; font-weight: bold;">
+                Value: ${point.value.toFixed(2)} ${point.originalRow.unit_pfas || ""}
+            </div><hr style="margin: 5px 0;">
+            <div>
+                <b>Location:</b> ${point.originalRow.city}, ${point.originalRow.year}<br>
+                <b>Sample Type:</b> ${point.originalRow.matrix}
+            </div>
+        `;
+        
+        const marker = L.circleMarker([point.lat, point.lon], markerOptions).bindPopup(popupContent);
         markers.addLayer(marker);
     });
 
     map.addLayer(markers);
+    
+    // --- **STEP 5: Create a dynamic legend reflecting the log scale** ---
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'info legend');
+        const labels = ['<strong>PFAS Value (ng/kg)</strong><br><small>(Logarithmic Scale)</small>'];
+        // Show points on the log scale for the legend
+        const grades = [minValue, Math.exp((logMin + logMax) / 2), maxValue];
+
+        for (let i = 0; i < grades.length; i++) {
+            const value = grades[i];
+            labels.push(
+                '<i style="background:' + getDynamicColor(value) + '"></i> ' +
+                (value >= 1000 ? (value/1000).toExponential(1) : Math.round(value))
+            );
+        }
+        div.innerHTML = labels.join('<br>');
+        return div;
+    };
+    legend.addTo(map);
 }
 </script>
 {% endblock %}
 
 {% block content %}
-<div id="map" style="width:100%; height:calc(100vh - 60px);"></div>
+<div id="map"></div>
 {% endblock %}

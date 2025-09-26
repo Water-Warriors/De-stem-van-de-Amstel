@@ -5,193 +5,168 @@
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
-
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-    
-        const dataFile = "{{ url_for('static', filename='data/data.csv') }}";
-        const nationalAvg = 7.0; 
-        let allData = [];
-    
-        const inputEl = document.getElementById('postcode');
-        const buttonEl = document.getElementById('check-button');
-        const resultDiv = document.getElementById('result');
-    
-        fetch(dataFile)
-            .then(res => res.ok ? res.text() : Promise.reject(new Error(`Netwerkfout: ${res.statusText}`)))
-            .then(text => {
-                allData = Papa.parse(text, { header: true }).data;
-                console.log("Data succesvol geladen.");
-                buttonEl.disabled = false;
-                inputEl.placeholder = "Bijv. 1012AB of Volendam";
-            })
-            .catch(error => {
-                console.error("Fout bij het laden van het databestand:", error);
-                resultDiv.innerHTML = `<p style="color:red;">Kon de databron niet laden. Probeer de pagina te vernieuwen.</p>`;
-            });
-    
-        function convertToNgPerKg(value, unit) {
-            if (!unit) return value;
-            const unitLower = unit.toLowerCase();
-            if (unitLower === 'µg/kg' || unitLower === 'ug/kg') {
-                return value * 1000;
-            }
-            return value;
-        }
-    
-        function checkPostcode() {
-            const input = inputEl.value.trim();
-            if (!input) {
-                alert("Vul je postcode of stad in.");
-                return;
-            }
-    
-            buttonEl.disabled = true;
-            buttonEl.textContent = 'Bezig...';
-            resultDiv.innerHTML = "";
-    
-            const inputNormalized = input.replace(/\s+/g, "").toUpperCase();
-            const containsNumber = /\d/.test(inputNormalized);
-    
-            const matches = allData.filter(row => {
-                const rowPc = (row.postcode || "").replace(/\s+/g, "").toUpperCase();
-                const rowCity = (row.city || "").toUpperCase();
-    
-                // *** FIX: Zoeklogica iets flexibeler gemaakt voor steden ***
-                if (containsNumber) {
-                    return rowPc.startsWith(inputNormalized);
-                } else {
-                    return rowCity.includes(inputNormalized); // Terug naar 'includes' voor betere vindbaarheid
-                }
-            });
-    
-            // *** FIX: Flexibelere filtering voor grondsoorten ***
-            // Herken nu meerdere termen voor grond/bodem.
-            const soilTypes = ['grond', 'bodem', 'soil', 'vaste stof'];
-            const soilMatches = matches.filter(row => {
-                return row.matrix && soilTypes.includes(row.matrix.toLowerCase());
-            });
-    
-            if (soilMatches.length === 0) {
-                resultDiv.innerHTML = `<p>Geen <b>grond- of bodemmonsters</b> gevonden voor deze locatie.</p>`;
-                buttonEl.disabled = false;
-                buttonEl.textContent = 'Check';
-                return;
-            }
-            
-            const allValues = [];
-            let sum = 0;
-    
-            soilMatches.forEach(row => {
-                if (row.pfas_sum) {
-                    const pfasString = row.pfas_sum.toString().replace(',', '.');
-                    const pfasValue = parseFloat(pfasString);
-                    
-                    if (!isNaN(pfasValue)) {
-                        const convertedValue = convertToNgPerKg(pfasValue, row.unit);
-                        allValues.push(convertedValue);
-                        sum += convertedValue;
-                    }
-                }
-            });
-            
-            if (allValues.length === 0) {
-                resultDiv.innerHTML = "<p>Geen geldige PFAS-data gevonden in de grondmonsters voor deze locatie.</p>";
-                buttonEl.disabled = false;
-                buttonEl.textContent = 'Check';
-                return;
-            }
-    
-            const avg = sum / allValues.length;
-            allValues.sort((a, b) => a - b);
-            let median;
-            const mid = Math.floor(allValues.length / 2);
-            median = allValues.length % 2 === 0 ? (allValues[mid - 1] + allValues[mid]) / 2 : allValues[mid];
-    
-            const displayValue = median;
-            const maxValue = Math.max(...allValues);
-    
-            let color, healthMsg;
-            if (displayValue <= 0.8 * nationalAvg) {
-                color = 'green';
-                healthMsg = "Heel goed, de mediaanwaarde in de bodem is ruim onder de RIVM-richtwaarde.";
-            } else if (displayValue <= nationalAvg) {
-                color = 'orange';
-                healthMsg = "Let op, de mediaanwaarde in de bodem ligt dicht bij de RIVM-richtwaarde.";
-            } else {
-                color = 'red';
-                healthMsg = "Waarschuwing: de mediaanwaarde in de bodem ligt boven de RIVM-richtwaarde!";
-            }
-    
-            const pctDifference = Math.abs(((displayValue - nationalAvg) / nationalAvg) * 100).toFixed(0);
-            const comparisonText = displayValue <= nationalAvg 
-                ? `Dat is <b>${pctDifference}% lager</b> dan de RIVM-richtwaarde (${nationalAvg} ng/kg).`
-                : `Dat is <b>${pctDifference}% hoger</b> dan de RIVM-richtwaarde (${nationalAvg} ng/kg).`;
-                
-            const textElement = document.createElement('div');
-            textElement.innerHTML = `
-                <p>Resultaten gebaseerd op <b>${allValues.length}</b> grond/bodem-monsters.</p>
-                <hr style="border:0; border-top: 1px solid #eee; margin: 1em 0;">
-                <p>Mediaan PFAS-waarde: <b>${median.toFixed(2)}</b> ng/kg</p>
-                <p style="font-weight:bold; color:${color};">${healthMsg}</p>
-                <p>${comparisonText}</p>
-                <hr style="border:0; border-top: 1px solid #eee; margin: 1em 0;">
-                <p><small>De hoogst gevonden meting was <b>${maxValue.toFixed(2)} ng/kg</b>.</small></p>
-                <p><small>De mediaan wordt gebruikt omdat deze minder gevoelig is voor extreme uitschieters.</small></p>
-            `;
-            resultDiv.appendChild(textElement);
-    
-            const canvasElement = document.createElement('canvas');
-            canvasElement.id = 'pfas-gauge';
-            resultDiv.appendChild(canvasElement);
-            
-            const gaugeMax = Math.max(displayValue * 1.5, nationalAvg * 2);
-    
-            new RadialGauge({
-                renderTo: 'pfas-gauge',
-                width: 300,
-                height: 300,
-                units: "ng/kg",
-                minValue: 0,
-                maxValue: gaugeMax.toFixed(1),
-                majorTicks: [0, (nationalAvg * 0.5).toFixed(1), nationalAvg.toFixed(1), (nationalAvg * 1.5).toFixed(1), (nationalAvg * 2).toFixed(1)],
-                minorTicks: 2,
-                strokeTicks: true,
-                highlights: [
-                    { "from": 0, "to": 0.8 * nationalAvg, "color": "rgba(0, 200, 0, .75)" },
-                    { "from": 0.8 * nationalAvg, "to": nationalAvg, "color": "rgba(255, 165, 0, .75)" },
-                    { "from": nationalAvg, "to": gaugeMax, "color": "rgba(255, 0, 0, .75)" }
-                ],
-                colorPlate: "#fff",
-                borderShadowWidth: 0,
-                borders: false,
-                needleType: "arrow",
-                needleWidth: 2,
-                needleCircleSize: 7,
-                needleCircleOuter: true,
-                needleCircleInner: false,
-                animationDuration: 1200,
-                animationRule: "linear",
-                value: displayValue
-            }).draw();
-            
+document.addEventListener('DOMContentLoaded', () => {
+
+    const dataFile = "{{ url_for('static', filename='data/data.csv') }}";
+    const nationalAvg = 7.0; 
+    let allData = [];
+
+    const inputEl = document.getElementById('postcode');
+    const buttonEl = document.getElementById('check-button');
+    const resultDiv = document.getElementById('result');
+
+    // Fetch and parse data
+    fetch(dataFile)
+        .then(res => res.ok ? res.text() : Promise.reject(new Error(`Netwerkfout: ${res.statusText}`)))
+        .then(text => {
+            allData = Papa.parse(text, { header: true, skipEmptyLines: true }).data;
             buttonEl.disabled = false;
-            buttonEl.textContent = 'Check';
+            inputEl.placeholder = "Postcode (bijv. 1012) of stad";
+        })
+        .catch(error => {
+            console.error("Fout bij het laden:", error);
+            resultDiv.innerHTML = `<p style="color:red;">Kon de databron niet laden.</p>`;
+        });
+
+    function convertToNgPerKg(value, unit) {
+        if (!unit) return value;
+        const unitLower = unit.toLowerCase();
+        if (unitLower === 'µg/kg' || unitLower === 'ug/kg') {
+            return value * 1000;
         }
-    
-        buttonEl.addEventListener('click', checkPostcode);
-        inputEl.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') {
-                checkPostcode();
+        return value;
+    }
+
+    function checkPostcode() {
+        const input = inputEl.value.trim();
+        if (!input) {
+            alert("Vul je postcode of stad in.");
+            return;
+        }
+
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Bezig...';
+        resultDiv.innerHTML = "";
+
+        const inputNormalized = input.replace(/\s+/g, "").toUpperCase();
+        const containsNumber = /\d/.test(inputNormalized);
+
+        const matches = allData.filter(row => {
+            const rowPc = (row.postcode || "").replace(/\s+/g, "").toUpperCase();
+            const rowCity = (row.city || "").toUpperCase();
+
+            if (containsNumber) {
+                return rowPc.startsWith(inputNormalized);
+            } else {
+                return rowCity.includes(inputNormalized);
             }
         });
+
+        if (matches.length === 0) {
+            resultDiv.innerHTML = `<p>Geen enkele meting gevonden voor de locatie: <b>${input}</b>.</p>`;
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Check';
+            return;
+        }
+
+        const soilTypes = ['grond', 'bodem', 'soil', 'vaste stof'];
+        const soilMatches = matches.filter(row => row.matrix && soilTypes.includes(row.matrix.toLowerCase()));
+
+        if (soilMatches.length === 0) {
+            resultDiv.innerHTML = `<p><b>${matches.length}</b> metingen gevonden voor "${input}", maar geen daarvan was een geldig grond/bodem-monster.</p>`;
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Check';
+            return;
+        }
+        
+        const allValues = [];
+        soilMatches.forEach(row => {
+            // *** FIX: Changed 'pfas_sum' to 'value' to match your new data ***
+            if (row.value) {
+                const pfasString = row.value.toString().replace(',', '.');
+                const pfasValue = parseFloat(pfasString);
+                if (!isNaN(pfasValue)) {
+                    // *** FIX: Changed 'unit' to 'unit_pfas' ***
+                    allValues.push(convertToNgPerKg(pfasValue, row.unit_pfas));
+                }
+            }
+        });
+        
+        if (allValues.length === 0) {
+            resultDiv.innerHTML = `<p>Geen geldige PFAS-waarden gevonden in de ${soilMatches.length} grondmonsters voor deze locatie.</p>`;
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Check';
+            return;
+        }
+
+        allValues.sort((a, b) => a - b);
+        const mid = Math.floor(allValues.length / 2);
+        const median = allValues.length % 2 === 0 ? (allValues[mid - 1] + allValues[mid]) / 2 : allValues[mid];
+        const maxValue = Math.max(...allValues);
+        const zeroValueCount = allValues.filter(v => v === 0).length;
+
+        const displayValue = median;
+        let color, healthMsg;
+        if (displayValue <= nationalAvg) {
+            color = 'green';
+            healthMsg = "De mediaanwaarde is binnen de RIVM-richtwaarde.";
+        } else {
+            color = 'red';
+            healthMsg = "Waarschuwing: de mediaanwaarde ligt boven de RIVM-richtwaarde!";
+        }
+
+        const pctDifference = Math.abs(((displayValue - nationalAvg) / nationalAvg) * 100).toFixed(0);
+        const comparisonText = displayValue <= nationalAvg 
+            ? `Dat is <b>${pctDifference}% lager</b> dan de RIVM-richtwaarde (${nationalAvg} ng/kg).`
+            : `Dat is <b>${pctDifference}% hoger</b> dan de RIVM-richtwaarde (${nationalAvg} ng/kg).`;
+
+        const textElement = document.createElement('div');
+        textElement.innerHTML = `
+            <p>Resultaten gebaseerd op <b>${allValues.length}</b> geldige grond/bodem-monsters.</p>
+            <p><small>(${zeroValueCount} van deze monsters hadden een waarde van 0 ng/kg).</small></p>
+            <hr style="border:0; border-top: 1px solid #eee; margin: 1em 0;">
+            <p>Mediaan PFAS-waarde: <b>${median.toFixed(2)}</b> ng/kg</p>
+            <p style="font-weight:bold; color:${color};">${healthMsg}</p>
+            <p>${comparisonText}</p>
+            <hr style="border:0; border-top: 1px solid #eee; margin: 1em 0;">
+            <p><small>De hoogst gevonden meting was <b>${maxValue.toFixed(2)} ng/kg</b>.</small></p>
+        `;
+        resultDiv.appendChild(textElement);
+        
+        const canvasElement = document.createElement('canvas');
+        canvasElement.id = 'pfas-gauge';
+        resultDiv.appendChild(canvasElement);
+        const gaugeMax = Math.max(displayValue * 1.5, nationalAvg * 2);
+
+        new RadialGauge({
+            renderTo: 'pfas-gauge',
+            width: 300, height: 300, units: "ng/kg", value: displayValue,
+            minValue: 0, maxValue: gaugeMax.toFixed(1),
+            majorTicks: [0, nationalAvg.toFixed(1), (nationalAvg * 2).toFixed(1)],
+            highlights: [
+                { "from": 0, "to": nationalAvg, "color": "rgba(0, 200, 0, .75)" },
+                { "from": nationalAvg, "to": gaugeMax, "color": "rgba(255, 0, 0, .75)" }
+            ]
+        }).draw();
+        
+        buttonEl.disabled = false;
+        buttonEl.textContent = 'Check';
+    }
+
+    buttonEl.addEventListener('click', checkPostcode);
+    inputEl.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+            checkPostcode();
+        }
     });
-    </script>
+});
+</script>
 {% endblock %}
 
 {% block content %}
 <h2>Postcodecheck PFAS in Grond</h2>
-<p>Voer je postcode of stad in om te zien hoe de PFAS-waarde in de grond scoort ten opzichte van de RIVM-richtwaarde.</p>
+<p>Voer je postcode of stad in om de PFAS-waarde in de grond scoort ten opzichte van de RIVM-richtwaarde.</p>
 
 <input type="text" id="postcode" placeholder="Data laden..." autofocus />
 <button id="check-button" disabled>Check</button>
