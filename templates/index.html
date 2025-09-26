@@ -1,8 +1,87 @@
-{% extends "base.html" %}
-
-{% block title %}PFAmSterdam - Home{% endblock %}
-
+{% extends "base.html" %} 
+{% block title %}PFAmSterdam - Home{% endblock %} 
 {% block content %}
-<h1>Welkom bij PFAmSterdam</h1>
-<p>Bekijk PFAS-data op de interactieve kaart of gebruik de postcodecheck.</p>
+<h1 style="font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0;">Welkom bij PFAmSterdam</h1>
+
+<main style="padding: 2rem; max-width: 900px; margin: auto; font-family: Arial, sans-serif; line-height: 1.6;">
+  <section id="about-pfas" style="margin-bottom: 2rem;">
+    <h2 style="margin-top: 1.5rem; text-align: center;">What are PFAS?</h2>
+    <p>
+      PFAS (Per- and Polyfluoroalkyl Substances) are a large family of more than
+      4,700 man-made chemicals that have been used since the 1950s in industry
+      and consumer goods. They are extremely resistant to water, grease, and
+      heat. These properties make PFAS valuable in everyday products, but also
+      very dangerous to the environment and human health.
+    </p>
+    <p>
+      PFAS are often called <strong>“forever chemicals”</strong> because they
+      hardly break down in nature. Once released into the environment, they can
+      contaminate drinking water, accumulate in fish and livestock, and remain
+      in the human body for years.
+    </p>
+    <p>
+      Studies suggest links between PFAS exposure and health issues such as
+      liver problems, thyroid disease, developmental delays, and even cancer.
+    </p>
+
+    <section id="local-info" style="margin-bottom: 2rem;">
+      <h2 style="margin-top: 1.5rem; text-align: center;">PFAS in the Netherlands</h2>
+      <p>
+        In the Netherlands, PFAS contamination has been found in several rivers,
+        lakes, and soil sites. These chemicals can spread from industrial
+        facilities into the wider environment.
+      </p>
+      <div style="background: #f8f8f8; margin-top: 1rem;">
+        <h3 style="margin-top: 1.5rem; text-align: center;">PFAS near the Amstel in Amsterdam</h3>
+        <p>
+          Recent environmental monitoring has shown traces of PFAS in surface
+          waters such as the <strong>Amstel river</strong>. While the levels are
+          being closely studied, it raises concern because the Amstel is not
+          only an important waterway for the city but also connects to broader
+          ecosystems. Authorities continue to monitor and research safe levels
+          of PFAS in this area.
+        </p>
+      </div>
+    </section>
+
+    <div id="more-info">
+      <h3 style="margin-top: 1.5rem; text-align: center;">Where are PFAS found?</h3>
+      <ul style="justify-items: center; margin: 0.3rem 0;">
+        <li>Non-stick cookware (e.g., Teflon pans)</li>
+        <li>Waterproof clothing and outdoor gear</li>
+        <li>Food packaging such as fast-food wrappers and pizza boxes</li>
+        <li>Firefighting foams used at airports and military bases</li>
+        <li>Industrial coatings, paints, and cleaning products</li>
+      </ul>
+
+      <h3 style="margin-top: 1.5rem; text-align: center;">Why are PFAS a problem?</h3>
+      <p>
+        Because PFAS do not naturally degrade, they accumulate over time in
+        water, soil, and living organisms. This means that every year, the
+        levels of PFAS in our environment can grow unless strict regulations and
+        clean-up actions are taken.
+      </p>
+
+      <h3 style="margin-top: 1.5rem; text-align: center;">Health Risks</h3>
+      <p style="text-align: center;">Research has linked PFAS exposure to:</p>
+      <ul style="justify-items: center; margin: 0.3rem 0;">
+        <li>Increased cholesterol levels</li>
+        <li>Liver and kidney damage</li>
+        <li>Weakened immune system (less effective vaccines)</li>
+        <li>Thyroid disease</li>
+        <li>Pregnancy complications and low birth weight</li>
+        <li>Developmental issues in children</li>
+        <li>Higher risk of certain cancers (kidney, testicular)</li>
+      </ul>
+
+      <h3 style="margin-top: 1.5rem; text-align: center;">What can you do?</h3>
+      <ul style="justify-items: center; margin: 0.3rem 0;">
+        <li>Choose PFAS-free cookware such as stainless steel or cast iron</li>
+        <li>Avoid water- and stain-repellent products unless PFAS-free</li>
+        <li>Check if your drinking water supplier monitors PFAS levels</li>
+        <li>Support environmental initiatives that regulate and clean PFAS</li>
+      </ul>
+    </div>
+  </section>
+</main>
 {% endblock %}
