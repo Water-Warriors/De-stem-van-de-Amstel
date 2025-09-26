@@ -51,7 +51,6 @@ fetch(dataFile)
  */
 function plotAllPoints(data) {
 
-    // --- **STEP 1: Find min and max, ignoring zero for log scale** ---
     let minValue = Infinity;
     let maxValue = -Infinity;
     const allPoints = data.map(row => {
@@ -61,7 +60,6 @@ function plotAllPoints(data) {
             value: parseFloat(row.value),
             originalRow: row
         };
-        // For log scale, we only consider values greater than 0
         if (!isNaN(point.value) && point.value > 0) {
             if (point.value < minValue) minValue = point.value;
             if (point.value > maxValue) maxValue = point.value;
@@ -69,29 +67,21 @@ function plotAllPoints(data) {
         return point;
     }).filter(p => !isNaN(p.lat) && !isNaN(p.lon) && !isNaN(p.value));
 
-    // --- **STEP 2: Create a LOGARITHMIC color function** ---
-    // Handle potential errors if all values are 0 or the same
     const logMin = minValue > 0 ? Math.log(minValue) : 0;
     const logMax = maxValue > 0 ? Math.log(maxValue) : 1;
 
     function getDynamicColor(value) {
-        if (value <= 0) return 'hsl(120, 100%, 50%)'; // Green for 0 or less
-        if (value >= maxValue) return 'hsl(0, 100%, 50%)'; // Red for max
-        
+        if (value <= 0) return 'hsl(120, 100%, 50%)'; // Green
         const logVal = Math.log(value);
-        // Normalize the log value from 0 to 1
         const normalized = (logVal - logMin) / (logMax - logMin);
-        
-        const hue = (1 - normalized) * 120; // 0 is red, 120 is green
+        const hue = (1 - normalized) * 120; // 0=red, 120=green
         return `hsl(${hue}, 100%, 50%)`;
     }
     
-    // Radius can remain linear or use a gentle log scale
     function getRadius(value) {
         return value > 0 ? Math.log(value + 1) * 2 + 5 : 5;
     }
 
-    // --- **STEP 3: Configure Marker Cluster Group** ---
     const markers = L.markerClusterGroup({
         maxClusterRadius: 100,
         disableClusteringAtZoom: 17,
@@ -104,10 +94,8 @@ function plotAllPoints(data) {
                 }
             });
             const avgPfas = totalPfas / childMarkers.length;
-
             const clusterColor = getDynamicColor(avgPfas);
             const displaySum = totalPfas > 1000 ? (totalPfas / 1000).toFixed(1) + 'k' : Math.round(totalPfas);
-
             return new L.DivIcon({
                 html: `<div style="background-color: ${clusterColor};"><span>${displaySum}</span></div>`,
                 className: 'marker-cluster',
@@ -116,7 +104,6 @@ function plotAllPoints(data) {
         }
     });
 
-    // --- **STEP 4: Plot all the points using the new color function** ---
     allPoints.forEach(point => {
         const markerOptions = {
             radius: getRadius(point.value),
@@ -128,13 +115,22 @@ function plotAllPoints(data) {
             pfasValue: point.value
         };
         
+        // ** Here is the updated popup content **
         const popupContent = `
             <div style="font-size: 1.1em; font-weight: bold;">
                 Value: ${point.value.toFixed(2)} ${point.originalRow.unit_pfas || ""}
-            </div><hr style="margin: 5px 0;">
+            </div>
+            <hr style="margin: 5px 0;">
             <div>
                 <b>Location:</b> ${point.originalRow.city}, ${point.originalRow.year}<br>
                 <b>Sample Type:</b> ${point.originalRow.matrix}
+            </div>
+            <hr style="margin: 5px 0;">
+            <div style="font-size: 0.9em;">
+                <b>Equivalents:</b><br>
+                🍎 Apples: ${point.originalRow['pfa equivalents in apples'] || 'N/A'}<br>
+                🐔 Chickens: ${point.originalRow['pfa equivalents in chickens'] || 'N/A'}<br>
+                🍺 Beers: ${point.originalRow['pfa equivalents in beers'] || 'N/A'}
             </div>
         `;
         
@@ -144,14 +140,11 @@ function plotAllPoints(data) {
 
     map.addLayer(markers);
     
-    // --- **STEP 5: Create a dynamic legend reflecting the log scale** ---
     const legend = L.control({position: 'bottomright'});
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
         const labels = ['<strong>PFAS Value (ng/kg)</strong><br><small>(Logarithmic Scale)</small>'];
-        // Show points on the log scale for the legend
         const grades = [minValue, Math.exp((logMin + logMax) / 2), maxValue];
-
         for (let i = 0; i < grades.length; i++) {
             const value = grades[i];
             labels.push(
