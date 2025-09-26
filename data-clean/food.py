@@ -21,7 +21,7 @@ try:
     for food_name, total_pfas in food_pfas_dict.items():
         # Create a clean column name (e.g., 'apple_per_kg_soil')
         # Takes the first word of the food name and makes it lowercase
-        clean_col_name = f"{food_name.split(' ')[0].lower()}_per_kg_soil"
+        clean_col_name = f"pfa equivalents in {food_name.split(' ')[0].lower()}s"
 
         # Calculate how many food units are equivalent to 1kg of soil
         calculation_result = (soil_concentration / total_pfas) / 100
